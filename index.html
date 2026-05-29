@@ -32,7 +32,7 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace}
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="arr">html simulation by kevin using meshy api </div>
+<div id="arr">html simulation by kevin using meshy api</div>
 <div id="ui">
   <div class="cg">
     <div class="row"><label>Tram speed</label><span class="val" id="sv">5</span></div>
@@ -355,6 +355,77 @@ lightColors.forEach((c,i)=>{
   pl.position.set(-8+i*8,-0.5,-6+i*4);scene.add(pl);
 });
 
+// BACKGROUND BUILDINGS — distant cityscape
+const bgBuildings=[
+  {x:-28,z:-18,w:3,h:22,d:3,col:0x0e1a2a},{x:-22,z:-22,w:4,h:14,d:4,col:0x121e2e},
+  {x:-32,z:-12,w:2.5,h:30,d:2.5,col:0x0a1520},{x:-18,z:-28,w:5,h:10,d:5,col:0x0f1e30},
+  {x:-36,z:-6,w:3,h:18,d:3,col:0x0d1828},{x:-40,z:2,w:2,h:25,d:2,col:0x0a1420},
+  {x:-26,z:4,w:3.5,h:12,d:3.5,col:0x111c2c},{x:-34,z:14,w:2.5,h:20,d:2.5,col:0x0c1622},
+  {x:28,z:18,w:3,h:20,d:3,col:0x0e1a2a},{x:24,z:22,w:4,h:12,d:4,col:0x121e2e},
+  {x:32,z:12,w:2.5,h:28,d:2.5,col:0x0a1520},{x:20,z:28,w:5,h:9,d:5,col:0x0f1e30},
+  {x:36,z:6,w:3,h:16,d:3,col:0x0d1828},{x:40,z:-2,w:2,h:22,d:2,col:0x0a1420},
+  {x:26,z:-4,w:3.5,h:11,d:3.5,col:0x111c2c},{x:34,z:-14,w:2.5,h:18,d:2.5,col:0x0c1622},
+  {x:-8,z:-30,w:4,h:15,d:4,col:0x0e1a28},{x:6,z:30,w:4,h:13,d:4,col:0x0c1824},
+  {x:14,z:-28,w:3,h:24,d:3,col:0x0a1520},{x:-14,z:26,w:3,h:19,d:3,col:0x0d1828},
+];
+bgBuildings.forEach(b=>{
+  const bm=new THREE.Mesh(new THREE.BoxGeometry(b.w,b.h,b.d),new THREE.MeshLambertMaterial({color:b.col}));
+  bm.position.set(b.x,b.h/2,b.z);bm.castShadow=true;scene.add(bm);
+  // window dots on background buildings
+  const wdm=new THREE.MeshLambertMaterial({color:0x334466,emissive:0x112233,transparent:true,opacity:.6});
+  for(let r=0;r<Math.floor(b.h/2);r++){
+    for(let c=0;c<2;c++){
+      if(Math.random()>.3){
+        const wd=new THREE.Mesh(new THREE.PlaneGeometry(.3,.2),wdm.clone());
+        wd.position.set(b.x-b.w/2-.01+c*(b.w*.7),r*1.4+1.5,b.z);
+        wd.rotation.y=Math.PI/2;scene.add(wd);
+      }
+    }
+  }
+});
+
+// CARS — moving through road
+const carColors=[0xcc2200,0x1144aa,0xeeeeee,0x222222,0x448844,0xaa8800,0x884422];
+const cars=[];
+function makeCar(zPos,lane,speed,col){
+  const cg=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.BoxGeometry(.9,.3,1.6),new THREE.MeshLambertMaterial({color:col}));
+  body.position.y=.22;cg.add(body);
+  const roof=new THREE.Mesh(new THREE.BoxGeometry(.7,.22,1.0),new THREE.MeshLambertMaterial({color:col}));
+  roof.position.y=.49;cg.add(roof);
+  // headlights
+  const hlm=new THREE.MeshLambertMaterial({color:0xffffee,emissive:0xffffcc});
+  [-1,1].forEach(s=>{
+    const hl=new THREE.Mesh(new THREE.BoxGeometry(.12,.1,.04),hlm);
+    hl.position.set(s*.3,.22,.82);cg.add(hl);
+    const tl=new THREE.Mesh(new THREE.BoxGeometry(.12,.1,.04),new THREE.MeshLambertMaterial({color:0xff2200,emissive:0x880000}));
+    tl.position.set(s*.3,.22,-.82);cg.add(tl);
+  });
+  // wheels
+  const wm=new THREE.MeshLambertMaterial({color:0x111111});
+  [[.4,.08,.7],[-.4,.08,.7],[.4,.08,-.7],[-.4,.08,-.7]].forEach(([x,y,z])=>{
+    const w=new THREE.Mesh(new THREE.CylinderGeometry(.1,.1,.08,10),wm);
+    w.rotation.z=Math.PI/2;w.position.set(x,y,z);cg.add(w);
+  });
+  cg.position.set(lane,0,zPos);
+  cg.castShadow=true;
+  scene.add(cg);
+  return{mesh:cg,speed,lane};
+}
+
+// spawn cars in both lanes, different speeds
+const carData=[
+  {z:-40,lane:1.1,speed:.08,col:carColors[0]},
+  {z:-10,lane:1.1,speed:.06,col:carColors[1]},
+  {z:20,lane:1.1,speed:.1,col:carColors[2]},
+  {z:40,lane:1.1,speed:.07,col:carColors[3]},
+  {z:10,lane:-1.1,speed:-.09,col:carColors[4]},
+  {z:-20,lane:-1.1,speed:-.07,col:carColors[5]},
+  {z:-45,lane:-1.1,speed:-.11,col:carColors[6]},
+  {z:35,lane:-1.1,speed:-.06,col:carColors[0]},
+];
+carData.forEach(d=>cars.push(makeCar(d.z,d.lane,d.speed,d.col)));
+
 // MOUSE ORBIT
 let dragging=false,rightDrag=false;
 let prev={x:0,y:0};
@@ -442,6 +513,15 @@ function animate(){
     const s=1+Math.sin(buzzFlash*.3)*.3;
     scene.children.filter(c=>c.geometry&&c.geometry.type==='TorusGeometry').forEach(r=>r.scale.set(s,s,s));
     buzzFlash--;
+  }
+
+  // move cars
+  if(!paused){
+    cars.forEach(car=>{
+      car.mesh.position.z+=car.speed;
+      if(car.speed>0&&car.mesh.position.z>50) car.mesh.position.z=-50;
+      if(car.speed<0&&car.mesh.position.z<-50) car.mesh.position.z=50;
+    });
   }
 
   if(autoRotate) sph.theta+=.003;
