@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SOAR 3D</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;font-family:'Courier New',monospace}
+#c{display:block;width:100vw;height:100vh}
+#ui{
+  position:fixed;top:20px;right:20px;
+  background:rgba(5,10,18,0.88);
+  border:1px solid rgba(29,158,117,0.35);
+  border-radius:14px;padding:22px 20px;
+  color:#c8ddd5;width:220px;
+  backdrop-filter:blur(12px);z-index:10
+}
+#ui h2{font-size:18px;font-weight:700;color:#1D9E75;letter-spacing:.2em;margin-bottom:2px}
+#ui p{font-size:9px;color:#2a5a4a;letter-spacing:.12em;margin-bottom:18px;border-bottom:1px solid rgba(29,158,117,.15);padding-bottom:12px}
+.cg{margin-bottom:13px}
+.cg label{display:block;font-size:9px;color:#4a8a6a;letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px}
+.cg input[type=range]{width:100%;accent-color:#1D9E75;cursor:pointer}
+.cg input[type=color]{width:100%;height:26px;border:none;border-radius:6px;cursor:pointer;background:none}
+.row{display:flex;justify-content:space-between;align-items:center}
+.val{font-size:9px;color:#1D9E75}
+.btn{width:100%;padding:9px;background:transparent;color:#1D9E75;border:1px solid #1D9E75;border-radius:8px;font-family:'Courier New',monospace;font-size:9px;letter-spacing:.12em;cursor:pointer;text-transform:uppercase;margin-bottom:7px;transition:all .15s}
+.btn:hover{background:#1D9E75;color:#050a12}
+#hint{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);color:#1a3a2a;font-size:9px;letter-spacing:.12em;text-transform:uppercase}
+#arr{position:fixed;top:20px;left:20px;color:#1D9E75;font-size:11px;letter-spacing:.15em;opacity:.6}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="arr">SOAR — SUSPENDED OVERHEAD AUTOMATED RAIL</div>
+<div id="ui">
+  <h2>SOAR</h2>
+  <p>3D SYSTEM SIMULATION</p>
+  <div class="cg">
+    <div class="row"><label>Tram speed</label><span class="val" id="sv">5</span></div>
+    <input type="range" id="spd" min="1" max="20" value="5">
+  </div>
+  <div class="cg">
+    <label>Tram colour</label>
+    <input type="color" id="tc" value="#ff5500">
+  </div>
+  <div class="cg">
+    <label>Tower 1 colour</label>
+    <input type="color" id="b1c" value="#1a2d4a">
+  </div>
+  <div class="cg">
+    <label>Tower 2 colour</label>
+    <input type="color" id="b2c" value="#0e2a1e">
+  </div>
+  <div class="cg">
+    <div class="row"><label>Time of day</label><span class="val" id="tv">day</span></div>
+    <input type="range" id="tod" min="0" max="100" value="70">
+  </div>
+  <div class="cg">
+    <div class="row"><label>Fog density</label><span class="val" id="fv">low</span></div>
+    <input type="range" id="fog" min="0" max="100" value="20">
+  </div>
+  <button class="btn" id="tog">⏸ PAUSE</button>
+  <button class="btn" id="cam">⟳ RESET CAMERA</button>
+  <button class="btn" id="auto">◎ AUTO ROTATE</button>
+</div>
+<div id="hint">drag · scroll · right-drag pan</div>
+
+<script>
+const renderer=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.1;
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x080f1c);
+scene.fog=new THREE.FogExp2(0x080f1c,0.012);
+
+const cam=new THREE.PerspectiveCamera(52,innerWidth/innerHeight,.1,600);
+cam.position.set(22,16,28);
+cam.lookAt(0,5,0);
+
+// LIGHTS
+const amb=new THREE.AmbientLight(0x223344,.9);scene.add(amb);
+const sun=new THREE.DirectionalLight(0xfff0dd,1.8);
+sun.position.set(25,40,15);sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.near=.5;sun.shadow.camera.far=100;
+sun.shadow.camera.left=-40;sun.shadow.camera.right=40;
+sun.shadow.camera.top=40;sun.shadow.camera.bottom=-40;
+scene.add(sun);
+const fill=new THREE.DirectionalLight(0x334466,.5);
+fill.position.set(-15,8,-10);scene.add(fill);
+const rim=new THREE.DirectionalLight(0x1D9E75,.3);
+rim.position.set(0,20,-20);scene.add(rim);
+
+// STARS
+const sg=new THREE.BufferGeometry();
+const sv=[];
+for(let i=0;i<1200;i++) sv.push((Math.random()-.5)*300,40+Math.random()*80,(Math.random()-.5)*300);
+sg.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));
+scene.add(new THREE.Points(sg,new THREE.PointsMaterial({color:0xffffff,size:.12,transparent:true,opacity:.8})));
+
+// GROUND
+const gnd=new THREE.Mesh(
+  new THREE.PlaneGeometry(120,120),
+  new THREE.MeshLambertMaterial({color:0x0a1018})
+);
+gnd.rotation.x=-Math.PI/2;gnd.receiveShadow=true;scene.add(gnd);
+
+// ROAD
+const road=new THREE.Mesh(
+  new THREE.PlaneGeometry(4,100),
+  new THREE.MeshLambertMaterial({color:0x111822})
+);
+road.rotation.x=-Math.PI/2;road.position.y=.01;road.receiveShadow=true;scene.add(road);
+
+// road dashes
+for(let i=-45;i<45;i+=4){
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(.12,1.8),new THREE.MeshLambertMaterial({color:0x2a3550}));
+  m.rotation.x=-Math.PI/2;m.position.set(0,.02,i);scene.add(m);
+}
+
+// helper: box
+function box(w,h,d,col,x,y,z,rx=0,ry=0,rz=0){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshLambertMaterial({color:col}));
+  m.position.set(x,y,z);m.rotation.set(rx,ry,rz);m.castShadow=true;m.receiveShadow=true;
+  scene.add(m);return m;
+}
+
+// BUILDING 1 — twisted cylindrical tower (Absolute World)
+let b1mats=[];
+const b1g=new THREE.Group();
+for(let i=0;i<22;i++){
+  const geo=new THREE.CylinderGeometry(2.2-i*.04,2.3-i*.04,.55,10);
+  const mat=new THREE.MeshLambertMaterial({color:0x1a2d4a});
+  b1mats.push(mat);
+  const fl=new THREE.Mesh(geo,mat);
+  fl.position.y=i*.6;fl.rotation.y=i*.07;fl.castShadow=true;
+  b1g.add(fl);
+}
+b1g.position.set(-13,0,-9);scene.add(b1g);
+
+// b1 windows
+const wm1=new THREE.MeshLambertMaterial({color:0x4488cc,emissive:0x0a1a33,transparent:true,opacity:.85});
+for(let i=0;i<14;i++){
+  for(let j=0;j<8;j++){
+    const ang=j*Math.PI*2/8;
+    const r=2.1-i*.04;
+    const wm=new THREE.Mesh(new THREE.PlaneGeometry(.4,.28),wm1);
+    wm.position.set(-13+Math.cos(ang)*r,i*.6+.1,-9+Math.sin(ang)*r);
+    wm.lookAt(-13+Math.cos(ang)*5,wm.position.y,-9+Math.sin(ang)*5);
+    scene.add(wm);
+  }
+}
+
+// BUILDING 2 — rectangular glass tower
+let b2mat=new THREE.MeshLambertMaterial({color:0x0e2a1e});
+const b2=new THREE.Mesh(new THREE.BoxGeometry(4.5,18,4),b2mat);
+b2.position.set(13,9,9);b2.castShadow=true;scene.add(b2);
+
+// b2 curtain wall
+const cm=new THREE.MeshLambertMaterial({color:0x0a1e14,emissive:0x050e0a});
+for(let r=0;r<12;r++){
+  for(let c=0;c<3;c++){
+    const pw=new THREE.Mesh(new THREE.PlaneGeometry(.9,.5),new THREE.MeshLambertMaterial({color:0x5aaa88,emissive:0x0a1a12,transparent:true,opacity:.8}));
+    pw.position.set(13-1.2+c*1.2,r*1.3+1,9+2.01);scene.add(pw);
+    const pb=new THREE.Mesh(new THREE.PlaneGeometry(.9,.5),new THREE.MeshLambertMaterial({color:0x5aaa88,emissive:0x0a1a12,transparent:true,opacity:.8}));
+    pb.position.set(13-1.2+c*1.2,r*1.3+1,9-2.01);pb.rotation.y=Math.PI;scene.add(pb);
+  }
+}
+
+// horizontal spandrels b2
+for(let r=0;r<13;r++){
+  const sp=new THREE.Mesh(new THREE.BoxGeometry(4.6,.08,4.1),new THREE.MeshLambertMaterial({color:0x0a1e14}));
+  sp.position.set(13,r*1.3,9);scene.add(sp);
+}
+
+// RAIL POSITIONS — horizontal, attached to buildings
+const RAIL_Y=8;
+const railStart=new THREE.Vector3(-13,RAIL_Y,-9);
+const railEnd=new THREE.Vector3(13,RAIL_Y,9);
+const railMid=new THREE.Vector3().addVectors(railStart,railEnd).multiplyScalar(.5);
+const railDir=new THREE.Vector3().subVectors(railEnd,railStart).normalize();
+const railLen=railStart.distanceTo(railEnd);
+const railAngle=Math.atan2(railEnd.z-railStart.z,railEnd.x-railStart.x);
+
+// M1 box beam — horizontal oriented correctly
+const m1=new THREE.Mesh(
+  new THREE.BoxGeometry(railLen,.25,.2),
+  new THREE.MeshLambertMaterial({color:0xb87333})
+);
+m1.position.copy(railMid);
+m1.rotation.y=-railAngle;
+scene.add(m1);
+
+// copper busbar on M1
+const copper=new THREE.Mesh(
+  new THREE.BoxGeometry(railLen,.06,.06),
+  new THREE.MeshLambertMaterial({color:0xe07030,emissive:0x201000})
+);
+copper.position.copy(railMid);
+copper.position.y=RAIL_Y-.12;
+copper.rotation.y=-railAngle;
+scene.add(copper);
+
+// M2 rail
+const m2=new THREE.Mesh(
+  new THREE.BoxGeometry(railLen,.12,.12),
+  new THREE.MeshLambertMaterial({color:0x445566})
+);
+m2.position.copy(railMid);
+m2.position.y=RAIL_Y-.28;
+m2.rotation.y=-railAngle;
+scene.add(m2);
+
+// WALL ANCHORS — attach rail to buildings
+function makeAnchor(pos,side){
+  const bkt=new THREE.Group();
+  const plate=new THREE.Mesh(new THREE.BoxGeometry(.25,.5,.08),new THREE.MeshLambertMaterial({color:0x2a3545}));
+  bkt.add(plate);
+  const arm=new THREE.Mesh(new THREE.BoxGeometry(.6,.08,.08),new THREE.MeshLambertMaterial({color:0x334455}));
+  arm.position.x=side*.3;bkt.add(arm);
+  const saddle=new THREE.Mesh(new THREE.BoxGeometry(.1,.2,.3),new THREE.MeshLambertMaterial({color:0x445566}));
+  saddle.position.x=side*.6;bkt.add(saddle);
+  // vibration damper
+  const damp=new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,.18,8),new THREE.MeshLambertMaterial({color:0x8B2020}));
+  damp.rotation.z=Math.PI/2;damp.position.x=side*.15;bkt.add(damp);
+  bkt.position.copy(pos);
+  scene.add(bkt);
+}
+
+// anchor at building 1 face
+const a1pos=new THREE.Vector3(-11,RAIL_Y,-7.5);
+makeAnchor(a1pos,1);
+// anchor at building 2 face  
+const a2pos=new THREE.Vector3(11,RAIL_Y,7.5);
+makeAnchor(a2pos,-1);
+// mid span support pylons
+for(let t=.25;t<=.75;t+=.25){
+  const p=new THREE.Vector3().lerpVectors(railStart,railEnd,t);
+  const pyl=new THREE.Mesh(new THREE.BoxGeometry(.08,.5,.08),new THREE.MeshLambertMaterial({color:0x334455}));
+  pyl.position.set(p.x,RAIL_Y-.25,p.z);scene.add(pyl);
+}
+
+// TRAM
+const tramG=new THREE.Group();
+
+// C-hook — wraps over top of M1
+const hookMat=new THREE.MeshLambertMaterial({color:0xff5500});
+
+// top bar of hook (sits on top of M1)
+const hookTop=new THREE.Mesh(new THREE.BoxGeometry(1,.15,.6),hookMat);
+hookTop.position.y=.12;tramG.add(hookTop);
+
+// left arm
+const hookL=new THREE.Mesh(new THREE.BoxGeometry(.15,.4,.6),hookMat);
+hookL.position.set(-.42,-.08,0);tramG.add(hookL);
+
+// right arm
+const hookR=new THREE.Mesh(new THREE.BoxGeometry(.15,.4,.6),hookMat);
+hookR.position.set(.42,-.08,0);tramG.add(hookR);
+
+// drive wheel on top of M1
+const wGeo=new THREE.CylinderGeometry(.14,.14,.08,20);
+const wMat=new THREE.MeshLambertMaterial({color:0x222222});
+const wheel=new THREE.Mesh(wGeo,wMat);
+wheel.rotation.z=Math.PI/2;wheel.position.set(0,.12,0);tramG.add(wheel);
+
+// wheel spokes
+const spokeMat=new THREE.MeshLambertMaterial({color:0x444444});
+for(let i=0;i<4;i++){
+  const sp=new THREE.Mesh(new THREE.BoxGeometry(.08,.02,.02),spokeMat);
+  sp.rotation.x=i*Math.PI/4;tramG.add(sp);
+}
+
+// lateral guide wheels
+const lgw=new THREE.MeshLambertMaterial({color:0x333333});
+[-1,1].forEach(side=>{
+  const gw=new THREE.Mesh(new THREE.CylinderGeometry(.08,.08,.06,12),lgw);
+  gw.position.set(0,0,side*.14);tramG.add(gw);
+});
+
+// stepper motor on top
+const motorMat=new THREE.MeshLambertMaterial({color:0x2a3d52});
+const motor=new THREE.Mesh(new THREE.CylinderGeometry(.22,.22,.28,12),motorMat);
+motor.position.set(0,.36,0);tramG.add(motor);
+
+// motor shaft
+const shaft=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,.12,8),new THREE.MeshLambertMaterial({color:0x888888}));
+shaft.rotation.z=Math.PI/2;shaft.position.set(.26,.36,0);tramG.add(shaft);
+
+// telescoping arm — outer sleeve
+const outerSleeve=new THREE.Mesh(new THREE.BoxGeometry(.18,.9,.18),new THREE.MeshLambertMaterial({color:0xcc4400}));
+outerSleeve.position.y=-.55;tramG.add(outerSleeve);
+
+// inner sleeve
+const innerSleeve=new THREE.Mesh(new THREE.BoxGeometry(.12,.7,.12),new THREE.MeshLambertMaterial({color:0xff6622}));
+innerSleeve.position.y=-.9;tramG.add(innerSleeve);
+
+// universal joint
+const ujoint=new THREE.Mesh(new THREE.SphereGeometry(.1,12,12),new THREE.MeshLambertMaterial({color:0x1D9E75}));
+ujoint.position.y=-1.32;tramG.add(ujoint);
+
+// CABIN
+const cabinMat=new THREE.MeshLambertMaterial({color:0xff5500});
+const cabin=new THREE.Mesh(new THREE.BoxGeometry(1.6,.7,.85),cabinMat);
+cabin.position.y=-1.72;cabin.castShadow=true;tramG.add(cabin);
+
+// cabin windows
+const winMat=new THREE.MeshLambertMaterial({color:0xaaddff,transparent:true,opacity:.7,emissive:0x112233});
+[-1,0,1].forEach(i=>{
+  const w=new THREE.Mesh(new THREE.PlaneGeometry(.32,.24),winMat);
+  w.position.set(i*.4,-1.72,.431);tramG.add(w);
+  const wb=new THREE.Mesh(new THREE.PlaneGeometry(.32,.24),winMat.clone());
+  wb.position.set(i*.4,-1.72,-.431);wb.rotation.y=Math.PI;tramG.add(wb);
+});
+
+// cabin door
+const door=new THREE.Mesh(new THREE.PlaneGeometry(.3,.5),new THREE.MeshLambertMaterial({color:0xcc4400}));
+door.position.set(0,-1.72,.432);tramG.add(door);
+
+// contact rods (M1 and M2 pickup)
+const rodMat=new THREE.MeshLambertMaterial({color:0xe07030});
+[-.18,-.28].forEach((dy,i)=>{
+  const rod=new THREE.Mesh(new THREE.CylinderGeometry(.02,.02,.3,6),rodMat);
+  rod.rotation.z=Math.PI/2;rod.position.set(.5,dy,0);tramG.add(rod);
+});
+
+// ULN2003 board visible on tram
+const board=new THREE.Mesh(new THREE.BoxGeometry(.3,.04,.2),new THREE.MeshLambertMaterial({color:0x1a4a1a}));
+board.position.set(-.4,-1.5,.2);tramG.add(board);
+
+// Arduino inside cabin (peek through window)
+const uno=new THREE.Mesh(new THREE.BoxGeometry(.28,.04,.22),new THREE.MeshLambertMaterial({color:0x1a6a3a}));
+uno.position.set(0,-1.62,0);tramG.add(uno);
+
+scene.add(tramG);
+
+// STATION GLOW RINGS
+[railStart,railEnd].forEach(p=>{
+  const ring=new THREE.Mesh(
+    new THREE.TorusGeometry(.8,.04,8,32),
+    new THREE.MeshBasicMaterial({color:0x1D9E75,transparent:true,opacity:.5})
+  );
+  ring.position.copy(p);ring.position.y=RAIL_Y-.5;ring.rotation.x=Math.PI/2;
+  scene.add(ring);
+});
+
+// AMBIENT CITY LIGHTS on ground
+const lightColors=[0x1D9E75,0x185FA5,0xcc4400];
+lightColors.forEach((c,i)=>{
+  const pl=new THREE.PointLight(c,.4,12);
+  pl.position.set(-8+i*8,-0.5,-6+i*4);scene.add(pl);
+});
+
+// MOUSE ORBIT
+let dragging=false,rightDrag=false;
+let prev={x:0,y:0};
+let sph={theta:.7,phi:.62,r:34};
+let panX=0,panY=0;
+let autoRotate=false;
+
+document.getElementById('c').addEventListener('mousedown',e=>{
+  dragging=true;rightDrag=e.button===2;prev={x:e.clientX,y:e.clientY};
+});
+document.addEventListener('mouseup',()=>{dragging=false;rightDrag=false;});
+document.addEventListener('mousemove',e=>{
+  if(!dragging)return;
+  const dx=e.clientX-prev.x,dy=e.clientY-prev.y;
+  if(rightDrag){panX-=dx*.02;panY+=dy*.02;}
+  else{sph.theta-=dx*.008;sph.phi=Math.max(.15,Math.min(1.45,sph.phi+dy*.008));}
+  prev={x:e.clientX,y:e.clientY};
+});
+document.getElementById('c').addEventListener('contextmenu',e=>e.preventDefault());
+document.getElementById('c').addEventListener('wheel',e=>{
+  sph.r=Math.max(8,Math.min(70,sph.r+e.deltaY*.04));
+});
+
+// CONTROLS
+let paused=false,speed=.006;
+document.getElementById('spd').oninput=e=>{speed=e.target.value*.0012;document.getElementById('sv').textContent=e.target.value;};
+document.getElementById('tc').oninput=e=>{cabinMat.color.set(e.target.value);hookMat.color.set(e.target.value);outerSleeve.material.color.set(e.target.value);};
+document.getElementById('b1c').oninput=e=>b1mats.forEach(m=>m.color.set(e.target.value));
+document.getElementById('b2c').oninput=e=>b2mat.color.set(e.target.value);
+document.getElementById('tod').oninput=e=>{
+  const v=e.target.value/100;
+  const sky=new THREE.Color().lerpColors(new THREE.Color(0x010306),new THREE.Color(0x0d1f3a),v);
+  scene.background=sky;scene.fog.color=sky;
+  sun.intensity=.3+v*2;amb.intensity=.3+v*.8;
+  document.getElementById('tv').textContent=v>.6?'day':v>.3?'dusk':'night';
+};
+document.getElementById('fog').oninput=e=>{
+  const v=e.target.value/100;
+  scene.fog.density=.004+v*.03;
+  document.getElementById('fv').textContent=v<.3?'low':v<.7?'mid':'dense';
+};
+document.getElementById('tog').onclick=()=>{
+  paused=!paused;
+  document.getElementById('tog').textContent=paused?'▶ RESUME':'⏸ PAUSE';
+};
+document.getElementById('cam').onclick=()=>{sph={theta:.7,phi:.62,r:34};panX=0;panY=0;};
+document.getElementById('auto').onclick=()=>{autoRotate=!autoRotate;document.getElementById('auto').textContent=autoRotate?'◎ STOP ROTATE':'◎ AUTO ROTATE';};
+
+// TRAM ANIMATION
+let t=0,tDir=1;
+let wheelRot=0;
+let buzzFlash=0;
+
+// position tram on rail
+function placeTram(t){
+  const pos=new THREE.Vector3().lerpVectors(railStart,railEnd,t);
+  tramG.position.copy(pos);
+  tramG.position.y=RAIL_Y;
+  const lookAt=tDir>0?railEnd.clone():railStart.clone();
+  tramG.lookAt(lookAt.x,RAIL_Y,lookAt.z);
+  tramG.rotateY(Math.PI/2);
+}
+
+let frame=0;
+function animate(){
+  requestAnimationFrame(animate);
+  frame++;
+
+  if(!paused){
+    t+=speed*tDir;
+    wheelRot+=.08*tDir*(speed/.006);
+    if(t>=1){t=1;tDir=-1;buzzFlash=30;}
+    if(t<=0){t=0;tDir=1;buzzFlash=30;}
+  }
+
+  placeTram(t);
+  wheel.rotation.x=wheelRot;
+
+  // inner sleeve telescopes slightly at stations
+  const stationProx=Math.min(t,1-t);
+  innerSleeve.position.y=-.9-Math.max(0,.1-stationProx*2)*.3;
+
+  // station ring pulse
+  if(buzzFlash>0){
+    const s=1+Math.sin(buzzFlash*.3)*.3;
+    scene.children.filter(c=>c.geometry&&c.geometry.type==='TorusGeometry').forEach(r=>r.scale.set(s,s,s));
+    buzzFlash--;
+  }
+
+  if(autoRotate) sph.theta+=.003;
+
+  // update camera
+  const cx=panX+sph.r*Math.sin(sph.phi)*Math.sin(sph.theta);
+  const cy=panY+sph.r*Math.cos(sph.phi)+4;
+  const cz=sph.r*Math.sin(sph.phi)*Math.cos(sph.theta);
+  cam.position.set(cx,cy,cz);
+  cam.lookAt(panX,panY+4,0);
+
+  renderer.render(scene,cam);
+}
+
+window.addEventListener('resize',()=>{
+  cam.aspect=innerWidth/innerHeight;
+  cam.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>
